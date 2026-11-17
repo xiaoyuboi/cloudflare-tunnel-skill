@@ -24,43 +24,63 @@ It supports two modes:
 
 ## Install
 
-> Claude Code only discovers skills laid out as `.claude/skills/<name>/SKILL.md` (a directory containing `SKILL.md`), and the helper script must be installed alongside it — always copy `SKILL.md` + `scripts/` + `references/` together.
+Put the whole repository into your skills directory, in a folder named `cloudflare-tunnel`.
 
-Claude Code global install (recommended, available in all projects):
+**Claude Code (global, available in all projects)**
+
+With git:
 
 ```bash
-git clone https://github.com/xiaoyuboi/cloudflare-tunnel-skill /tmp/cloudflare-tunnel-skill
-mkdir -p ~/.claude/skills/cloudflare-tunnel
-cp /tmp/cloudflare-tunnel-skill/SKILL.md ~/.claude/skills/cloudflare-tunnel/
-cp -R /tmp/cloudflare-tunnel-skill/scripts /tmp/cloudflare-tunnel-skill/references ~/.claude/skills/cloudflare-tunnel/
-rm -rf /tmp/cloudflare-tunnel-skill
+git clone https://github.com/xiaoyuboi/cloudflare-tunnel-skill ~/.claude/skills/cloudflare-tunnel
 ```
 
-Claude Code project-level install (current project only): same as above, but copy into `.claude/skills/cloudflare-tunnel/` inside the project.
+Without git (for example a new Mac where `git` prints an `xcode-select` error), use curl:
 
-Codex install: same as above, but copy into `~/.codex/skills/cloudflare-tunnel/`.
+```bash
+mkdir -p ~/.claude/skills/cloudflare-tunnel && curl -fsSL https://github.com/xiaoyuboi/cloudflare-tunnel-skill/archive/refs/heads/main.tar.gz | tar -xz --strip-components=1 -C ~/.claude/skills/cloudflare-tunnel
+```
 
-> Requirements: `cloudflared` (see `references/troubleshooting.md` for install commands) and Python 3. The helper script is fully tested on macOS / Linux; Windows support is best-effort (process management uses `tasklist`/`taskkill`) — prefer WSL or the manual fallback commands on Windows.
+**Other locations**: replace `~/.claude/skills` in the commands above.
+
+| Use | Directory |
+|---|---|
+| Claude Code, current project only | `.claude/skills/cloudflare-tunnel` |
+| Codex | `~/.codex/skills/cloudflare-tunnel` |
+
+**Update**: `git -C ~/.claude/skills/cloudflare-tunnel pull` for a git install; rerun the install command for a curl install.
+
+Start a new session afterwards and ask the agent, for example, "give me a public link for my local app on port 3000".
+
+## Requirements
+
+- **cloudflared**: required. If it is missing, the agent installs it with the commands in [references/troubleshooting.md](references/troubleshooting.md), with or without Homebrew.
+- **Python 3**: optional. The helper script needs it; without it the agent falls back to plain `cloudflared` commands with the same result.
+- Fully tested on macOS and Linux. Windows support is best-effort; prefer WSL.
 
 ## Quick Tunnel
+
+`scripts/` below means the `scripts/` folder inside the installed skill.
 
 ```bash
 python3 scripts/tunnel_helper.py quick --url http://localhost:3000
 ```
 
-Status:
+Verify the public URL (retries while DNS propagates):
+
+```bash
+python3 scripts/tunnel_helper.py verify --url https://xxxx.trycloudflare.com
+```
+
+Status and stop:
 
 ```bash
 python3 scripts/tunnel_helper.py status
+python3 scripts/tunnel_helper.py stop --port 3000
 ```
 
-Stop:
+Several tunnels can run at once, one per local address. State and logs live in `~/.cloudflare-tunnel-skill/`, so nothing is written into your project and `status` / `stop` work from any directory.
 
-```bash
-python3 scripts/tunnel_helper.py stop
-```
-
-Manual fallback:
+Manual command without the helper:
 
 ```bash
 printf '' > /tmp/cloudflared-empty.yml
@@ -81,21 +101,30 @@ Flow:
 cloudflared tunnel login
 cloudflared tunnel create my-app
 cloudflared tunnel route dns my-app app.example.com
-python3 scripts/tunnel_helper.py named-config --name my-app --hostname app.example.com --url http://localhost:3000
-cloudflared tunnel --config .cloudflare-tunnel/my-app.yml run my-app
+python3 scripts/tunnel_helper.py named-run --name my-app --hostname app.example.com --url http://localhost:3000
 ```
+
+`named-run` starts the tunnel in the background. Stop it with:
+
+```bash
+python3 scripts/tunnel_helper.py stop --name my-app
+```
+
+Pick the zone that contains the hostname during login; see [references/named-tunnel.md](references/named-tunnel.md) for other pitfalls.
 
 ## Test
 
-```bash
-python3 -m py_compile scripts/tunnel_helper.py scripts/test_quick_tunnel.py
-python3 scripts/tunnel_helper.py --help
-```
-
-End-to-end Quick Tunnel test:
+End-to-end Quick Tunnel test (serves a temporary page, then start, verify, stop):
 
 ```bash
 python3 scripts/test_quick_tunnel.py
+```
+
+Basic checks:
+
+```bash
+python3 -m py_compile scripts/tunnel_helper.py scripts/test_quick_tunnel.py
+python3 scripts/tunnel_helper.py check
 ```
 
 ## Security

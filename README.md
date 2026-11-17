@@ -28,59 +28,65 @@
 
 ## 安装
 
-> Claude Code 只识别 `.claude/skills/<名字>/SKILL.md` 这种**目录结构**，并且 helper 脚本必须随 skill 一起安装，所以请完整复制 `SKILL.md` + `scripts/` + `references/` 三部分。
+把整个仓库放进 skill 目录即可，目录名用 `cloudflare-tunnel`。
 
-Claude Code 全局安装（推荐，所有项目可用）：
+**Claude Code（全局，所有项目可用）**
 
-```bash
-git clone https://github.com/xiaoyuboi/cloudflare-tunnel-skill /tmp/cloudflare-tunnel-skill
-mkdir -p ~/.claude/skills/cloudflare-tunnel
-cp /tmp/cloudflare-tunnel-skill/SKILL.md ~/.claude/skills/cloudflare-tunnel/
-cp -R /tmp/cloudflare-tunnel-skill/scripts /tmp/cloudflare-tunnel-skill/references ~/.claude/skills/cloudflare-tunnel/
-rm -rf /tmp/cloudflare-tunnel-skill
-```
-
-Claude Code 项目级安装（仅当前项目可用）：
+有 git：
 
 ```bash
-git clone https://github.com/xiaoyuboi/cloudflare-tunnel-skill /tmp/cloudflare-tunnel-skill
-mkdir -p .claude/skills/cloudflare-tunnel
-cp /tmp/cloudflare-tunnel-skill/SKILL.md .claude/skills/cloudflare-tunnel/
-cp -R /tmp/cloudflare-tunnel-skill/scripts /tmp/cloudflare-tunnel-skill/references .claude/skills/cloudflare-tunnel/
-rm -rf /tmp/cloudflare-tunnel-skill
+git clone https://github.com/xiaoyuboi/cloudflare-tunnel-skill ~/.claude/skills/cloudflare-tunnel
 ```
 
-Codex 安装：
+没有 git（比如新 Mac 上 `git` 报 `xcode-select` 错误），用 curl：
 
 ```bash
-git clone https://github.com/xiaoyuboi/cloudflare-tunnel-skill /tmp/cloudflare-tunnel-skill
-mkdir -p ~/.codex/skills/cloudflare-tunnel
-cp /tmp/cloudflare-tunnel-skill/SKILL.md ~/.codex/skills/cloudflare-tunnel/
-cp -R /tmp/cloudflare-tunnel-skill/scripts /tmp/cloudflare-tunnel-skill/references ~/.codex/skills/cloudflare-tunnel/
-rm -rf /tmp/cloudflare-tunnel-skill
+mkdir -p ~/.claude/skills/cloudflare-tunnel && curl -fsSL https://github.com/xiaoyuboi/cloudflare-tunnel-skill/archive/refs/heads/main.tar.gz | tar -xz --strip-components=1 -C ~/.claude/skills/cloudflare-tunnel
 ```
 
-> 系统要求：需要预装 `cloudflared`（安装方法见 `references/troubleshooting.md`）和 Python 3。helper 脚本在 macOS / Linux 上经过完整测试；Windows 为尽力支持（进程管理走 `tasklist`/`taskkill`），建议 Windows 用户优先使用 WSL 或手动命令。
+**其他位置**：把上面命令里的 `~/.claude/skills` 换掉。
+
+| 用途 | 目录 |
+|---|---|
+| Claude Code 仅当前项目 | `.claude/skills/cloudflare-tunnel` |
+| Codex | `~/.codex/skills/cloudflare-tunnel` |
+
+**更新**：git 安装的执行 `git -C ~/.claude/skills/cloudflare-tunnel pull`；curl 安装的重新执行一遍安装命令。
+
+装好后重开一个会话，直接对 Agent 说「把我本地 3000 端口的网页生成一个公网链接」就行。
+
+## 系统要求
+
+- **cloudflared**：必需。没装的话 Agent 会按 [references/troubleshooting.md](references/troubleshooting.md) 里的命令安装，有 Homebrew 和免 Homebrew 两种方式。
+- **Python 3**：可选。有的话用 helper 脚本，体验更好；没有的话 Agent 会改用纯 `cloudflared` 命令，功能一样。
+- macOS / Linux 经过完整测试；Windows 为尽力支持，建议优先使用 WSL。
+
+国内网络说明：`trycloudflare.com` 的链接国内可以直接打开；从 GitHub 下载 cloudflared 可能很慢或中断，重复执行同一条下载命令会断点续传。
 
 ## Quick Tunnel 临时链接
+
+以下命令里的 `scripts/` 指 skill 安装目录下的 `scripts/`。
 
 ```bash
 python3 scripts/tunnel_helper.py quick --url http://localhost:3000
 ```
 
-查看状态：
+验证公网链接（会自动重试，等 DNS 生效）：
+
+```bash
+python3 scripts/tunnel_helper.py verify --url https://xxxx.trycloudflare.com
+```
+
+查看状态和停止：
 
 ```bash
 python3 scripts/tunnel_helper.py status
+python3 scripts/tunnel_helper.py stop --port 3000
 ```
 
-停止：
+可以同时开多条隧道，每个本地地址一条。状态和日志统一放在 `~/.cloudflare-tunnel-skill/`，不会往你的项目里写文件，在任何目录都能查状态和停止。
 
-```bash
-python3 scripts/tunnel_helper.py stop
-```
-
-手动命令：
+不用脚本的手动命令：
 
 ```bash
 printf '' > /tmp/cloudflared-empty.yml
@@ -101,13 +107,20 @@ cloudflared --config /tmp/cloudflared-empty.yml tunnel --no-autoupdate --protoco
 cloudflared tunnel login
 cloudflared tunnel create my-app
 cloudflared tunnel route dns my-app app.example.com
-python3 scripts/tunnel_helper.py named-config --name my-app --hostname app.example.com --url http://localhost:3000
-cloudflared tunnel --config .cloudflare-tunnel/my-app.yml run my-app
+python3 scripts/tunnel_helper.py named-run --name my-app --hostname app.example.com --url http://localhost:3000
 ```
+
+`named-run` 会在后台启动隧道。停止：
+
+```bash
+python3 scripts/tunnel_helper.py stop --name my-app
+```
+
+登录时要选对域名所在的站点，其他注意事项见 [references/named-tunnel.md](references/named-tunnel.md)。
 
 ## 本地测试
 
-端到端 Quick Tunnel 测试：
+端到端 Quick Tunnel 测试（起一个临时网页，走完 启动 → 验证 → 停止）：
 
 ```bash
 python3 scripts/test_quick_tunnel.py
@@ -117,7 +130,7 @@ python3 scripts/test_quick_tunnel.py
 
 ```bash
 python3 -m py_compile scripts/tunnel_helper.py scripts/test_quick_tunnel.py
-python3 scripts/tunnel_helper.py --help
+python3 scripts/tunnel_helper.py check
 ```
 
 ## 安全提醒
